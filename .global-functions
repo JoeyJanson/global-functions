@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# https://github.com/JoeyJanson/global-functions
+
+# shorthand for docker compose.
+# You can run this with all the known commands like: dc up, dc stop, dc up --build, dc up -d etc.
+alias dc='docker compose'
+
+# `docker ps` and show only the names of the running containers
+alias dpsn='docker ps --format '{{.Names}}''
+
+# kill all running docker containers
+alias dkill='docker kill $(docker ps -q)'
+
+
+#
+# dl can be used to list all the running containers and give
+# them an index followed by their container name.
+#
+function dl() {
+  i=1
+  for value in $(docker ps --format '{{.Names}}')
+  do
+   echo $i $value
+   i=$(expr $i + 1)
+  done
+}
+
+#
+# dx can be used in two ways:
+# 1. it expects the index of the previous function and will open the container in bash or sh (default in bash, second parameter sh or bash is optional)
+# 2. it can be used as a shorthand for the docker exec command and the next parameter will be the container name or id (again: default in bash, second parameter sh or bash is optional)
+#
+function dx() {
+  re='^[0-9]+$'
+  if [[ $1 =~ $re ]]; then
+     if [ "sh" = "$2" ]; then
+         docker exec -it $(dpsn | sed -n $1p) sh
+     else
+         docker exec -it $(dpsn | sed -n $1p) bash
+     fi
+  else
+     if [ "sh" = "$2" ]; then
+        docker exec -it $1 sh
+     else
+        docker exec -it $1 bash
+     fi
+  fi
+}
+
+#
+# tp is a shorthand for opening a local mysql database connection in tableplus expecting the dl index for that db container.
+#
+# It will try finding the .env in the current folder and load the MYSQL_USER, MYSQL_PASSWORD and
+# MYSQL_DATABASE variables if they exist. Otherwise it will fall back to a default value
+# for those variables which we use as default for our local projects @ Internetbureau gett
+#
+function tp() {
+  re='^[0-9]+$'
+  if [[ $1 =~ $re ]]; then
+    MYSQL_USER=app
+    MYSQL_PASSWORD=app
+    MYSQL_DATABASE=app
+    EXPOSED=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "3306/tcp") 0).HostPort}}' $(dpsn | sed -n $1p))
+    FILE=$(pwd)/.env
+    if test -f "$FILE"; then
+        set -o allexport
+        source .env
+        set +o allexport
+    fi
+    USER=${MYSQL_USER}
+    PASS=${MYSQL_PASSWORD}
+    DB=${MYSQL_DATABASE}
+    set -x
+    query="mysql://${USER}:${PASS}@127.0.0.1:${EXPOSED}/${DB}"
+    open "$query" -a "/Applications/TablePlus.app/Contents/MacOS/TablePlus"
+  fi
+}
+
